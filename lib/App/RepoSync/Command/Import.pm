@@ -81,11 +81,25 @@ sub run {
 
                 if( -e $path ) {
                     say "git-svn: updating $path";
-                    system_or_die("git svn update $git_svn_opts --fetch-all");
+                    system_or_die("git svn rebase --fetch-all -q $git_svn_opts --fetch-all");
                 } else {
                     say "git-svn: checking out $url into $path";
-                    system_or_die("git svn clone $url $path","checkout svn through git-svn");
+                    system_or_die("git svn clone -q $url $path","checkout svn through git-svn");
                 }
+            }
+            when('hg') {
+                my $path = $repo->{path};
+                my $url = $repo->{url};
+
+                if( -e $path ) {
+                    say "hg: updating $path";
+                    system_or_die("hg update","hg update --quiet",$path);
+                }
+                else {
+                    say "hg: checking out $url into $path";
+                    system_or_die("hg clone --quiet $url $path","hg clone");
+                }
+
             }
         }
     }

@@ -12,16 +12,23 @@ sub run {
 
     my ($export_file,@dirs) = @args;
 
+    my $cwd = getcwd();
+
     $export_file ||= 'repos.yml';
     @dirs = getcwd() unless @dirs;
 
     say 'scanning repos...';
     my @data = ();
     for( @dirs ) {
+        say "scanning $_";
+        chdir $cwd;
         my @repos = App::RepoSync::Export->run( $_ );
         push @data, @repos;
     }
 
+    chdir $cwd;
+
+    say "writing $export_file...";
     YAML::DumpFile( $export_file , {
         version => 0.1,
         repos => \@data,
