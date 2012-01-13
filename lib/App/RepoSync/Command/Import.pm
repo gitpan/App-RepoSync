@@ -9,11 +9,20 @@ use Cwd;
 use YAML;
 use App::RepoSync::Export;
 use App::RepoSync::SystemUtil qw(system_or_die chdir_qx);
+use Term::ANSIColor;
 
 sub option_spec {
     [ 'help|h'      => 'show help' ],
     [ 'verbose|v'   => 'be verbose' ],
     # [ 'db=s'        => 'path to SQLite database file' ],
+}
+
+sub info {
+    print color('green'), @_ , color('reset') , "\n";
+}
+
+sub warning {
+    print color('red'), @_ , color('reset') , "\n";
 }
 
 sub run {
@@ -22,14 +31,15 @@ sub run {
 
     my $back_dir = getcwd();
 
-    my $verbose = $opts->{verbose};
-    my $svn_opts = $verbose ? qq() : qq(-q);
-    my $git_opts = $verbose ? qq(--verbose) : qq(--quiet);
+    my $verbose      = $opts->{verbose};
+    my $svn_opts     = $verbose ? qq() : qq(-q);
+    my $git_opts     = $verbose ? qq(--verbose) : qq(--quiet);
     my $git_svn_opts = $verbose ? qq() : qq(--quiet);
+    my $hg_opts      = $verbose ? qq() : qq(--quiet);
 
     my $data = YAML::LoadFile $import_file;
 
-    say "importing @{[ scalar @{ $data->{repos} } ]} repositories.";
+    info "importing @{[ scalar @{ $data->{repos} } ]} repositories.";
 
     for my $repo ( @{ $data->{repos} } ) {
         given ($repo->{type} ) {
@@ -37,13 +47,13 @@ sub run {
                 my $path = $repo->{path};
                 my $url = $repo->{url};
                 if ( -e $path ) {
-                    say "svn: updating $path from $url";
+                    info "svn: updating $path from $url";
 
                     system_or_die("svn update $svn_opts --trust-server-cert --non-interactive $path",
                             "svn update");
                 }
                 else {
-                    say "svn: checking out $url into $path";
+                    info "svn: checking out $url into $path";
                     system_or_die("svn checkout $svn_opts --trust-server-cert --non-interactive $url $path",
                             "svn checkout");
                 }
@@ -53,25 +63,25 @@ sub run {
                 my $url = $repo->{url};
                 my %remotes = %{ $repo->{remotes} };
                 if( -e $path ) {
-                    say "git: updating $path";
-                    say "git: remote update and prune";
+                    info "git: updating $path";
+                    info "git: remote update and prune";
 
                     system_or_die("git remote update --prune",'git remote update',$path);
 
                     # should we update current working copy ?
                     my $dirty = chdir_qx("git diff",$path);
                     if( $dirty ) {
-                        say "$path (dirty)";
+                        warning "$path (dirty)";
                         next;
                     }
 
-                    say "git: pulling $path";
+                    info "git: pulling $path";
                     for my $remote ( values %remotes ) {
                         system_or_die("git pull $git_opts $remote HEAD","git pull",$path);
                     }
                 }
                 else {
-                    say "git: cloning $url into $path";
+                    info "git: cloning $url into $path";
                     system_or_die("git clone $git_opts $url $path","git clone");
                 }
             }
@@ -80,11 +90,11 @@ sub run {
                 my $url = $repo->{url};
 
                 if( -e $path ) {
-                    say "git-svn: updating $path";
-                    system_or_die("git svn rebase --fetch-all -q $git_svn_opts --fetch-all");
+                    info "git-svn: updating $path";
+                    system_or_die("git svn rebase $git_svn_opts --fetch-all");
                 } else {
-                    say "git-svn: checking out $url into $path";
-                    system_or_die("git svn clone -q $url $path","checkout svn through git-svn");
+                    info "git-svn: checking out $url into $path";
+                    system_or_die("git svn clone $git_svn_opts $url $path","checkout svn through git-svn");
                 }
             }
             when('hg') {
@@ -92,18 +102,23 @@ sub run {
                 my $url = $repo->{url};
 
                 if( -e $path ) {
-                    say "hg: updating $path";
-                    system_or_die("hg update","hg update --quiet",$path);
+                    chdir $path;
+                    my $dirty = qx(hg diff);
+                    chdir $back_dir;
+                    next if $dirty;
+
+                    info "hg: updating $path";
+                    system_or_die("hg pull","hg pull $hg_opts",$path);
                 }
                 else {
-                    say "hg: checking out $url into $path";
-                    system_or_die("hg clone --quiet $url $path","hg clone");
+                    info "hg: checking out $url into $path";
+                    system_or_die("hg clone $hg_opts $url $path","hg clone");
                 }
 
             }
         }
     }
-    say "done. @{[ scalar @{ $data->{repos} } ]} repositories imported.";
+    info "done. @{[ scalar @{ $data->{repos} } ]} repositories imported.";
 }
 
 1;

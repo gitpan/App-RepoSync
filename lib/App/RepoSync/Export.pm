@@ -10,6 +10,7 @@ use File::Find::Rule;
 use File::Basename;
 use Config::Tiny;
 use App::RepoSync::SystemUtil qw(system_or_die chdir_qx);
+use Term::ANSIColor;
 
 sub parse_svn_info {
     my $cmd = shift || 'svn info';
@@ -40,12 +41,16 @@ sub parse_svn_info {
 
 sub traverse_dir {
     my ($dir,$cb) = @_;
+
     opendir(my $dh, $dir ) || die "can't opendir $dir: $!";
+
     my @result;
-    my @dirs = readdir $dh;
+    my @dirs = readdir($dh);
+    closedir $dh;
     for my $subdir ( @dirs ) {
         my $abspath = File::Spec->join( $dir, $subdir );
         next if $subdir eq '.' || $subdir eq '..' ;
+
         if( -d $abspath ) {
             my $path = $cb->( $subdir, $dir );
 
@@ -53,22 +58,21 @@ sub traverse_dir {
 
             if( $path ) {
                 push @result, $path;
-            }
-            else {
+            } else {
                 push @result, traverse_dir( $abspath , $cb);
             }
         }
-
     }
-    closedir $dh;
     return @result;
 }
 
 sub run {
-    my ($class,$sync_root) = @_;
-    $sync_root = realpath($sync_root);
+    my ($class,$export_root) = @_;
+    my $sync_root = getcwd();
 
-    my @repos = traverse_dir $sync_root, sub { 
+    $export_root = realpath( $export_root );
+
+    my @repos = traverse_dir $export_root, sub { 
         my ($subdir,$parent) = @_;
         my $path = File::Spec->join( $parent, $subdir );
         my $subpath = substr( $path , length( $sync_root ) + 1 );
